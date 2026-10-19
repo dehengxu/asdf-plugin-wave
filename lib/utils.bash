@@ -43,6 +43,39 @@ host_os() {
   esac
 }
 
+# True on Apple Silicon hardware, even from inside a translated process.
+_is_apple_silicon() {
+  [ "$(uname -s)" = "Darwin" ] || return 1
+  # hw.optional.arm64 is a hardware feature flag, so it keeps reporting 1
+  # even from a Rosetta-translated process.
+  if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ]; then
+    return 0
+  fi
+  # Fallback for hardened environments where sysctl is unavailable: ask the
+  # kernel to actually execute an arm64 binary.
+  arch -arm64 /usr/bin/true >/dev/null 2>&1
+}
+
+# What the CPU can actually execute.
+#
+# `uname -m` reports the *process* architecture, which lies under Rosetta 2:
+# an x86_64 `asdf` running on Apple Silicon spawns these scripts with a
+# translated environment where `uname -m` answers x86_64, and we would then
+# install the Intel build on a machine that has the native one. Query the
+# hardware, not the process.
+host_arch() {
+  local m
+  m="$(uname -m)"
+  case "$m" in
+    arm64 | aarch64)
+      echo "arm64" ;;
+    x86_64 | amd64)
+      if _is_apple_silicon; then echo "arm64"; else echo "x64"; fi ;;
+    *)
+      echo "$m" ;;
+  esac
+}
+
 # Asset arch spellings to try, best first.
 #
 # On Linux `uname -m` reports x86_64/aarch64 but the .zip is published under
@@ -50,16 +83,15 @@ host_os() {
 # the only candidate. Windows ships x64 only, so ARM falls back to x64 and
 # runs under emulation.
 arch_candidates() {
-  local m
-  m="$(uname -m)"
-  case "$m" in
-    arm64 | aarch64)
+  case "$(host_arch)" in
+    arm64)
       if [ "$(host_os)" = "win32" ]; then echo "arm64 x64"; else echo "arm64 aarch64"; fi
       ;;
-    x86_64 | amd64)
+    x64)
       if [ "$(host_os)" = "win32" ]; then echo "x64"; else echo "x64 amd64 x86_64"; fi
       ;;
-    *) echo "$m" ;;
+    *)
+      uname -m ;;
   esac
 }
 
@@ -202,7 +234,7 @@ install_version() {
 
   os_token="$(host_os)"
   asset="$(pick_asset "$version")" ||
-    fail "no downloadable build for $(host_os)/$(uname -m) at v${version}"
+    fail "no downloadable build for $(host_os)/$(host_arch) at v${version}"
   archive="${ASDF_DOWNLOAD_PATH:-${install_path}/.download}/${asset}"
 
   [ -f "$archive" ] ||
@@ -261,7 +293,7 @@ install_version() {
   [ "$os_token" = "win32" ] && wrapper="${wrapper}.cmd"
 
   echo
-  echo "wave ${version} installed (${os_token}/$(uname -m), asset ${asset})."
+  echo "wave ${version} installed (${os_token}/$(host_arch), asset ${asset})."
   echo "  app bundle : ${install_path}/${entry}"
   echo "  CLI entry  : ${wrapper}  (shim it with: asdf reshim wave)"
   if [ "$os_token" = "darwin" ]; then

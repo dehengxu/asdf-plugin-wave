@@ -40,6 +40,19 @@ order, so it adapts if upstream renames or drops a target. (The asset list has b
 observed to differ between API responses for the same release, which is why the
 plugin never trusts a baked-in table at runtime.)
 
+### Rosetta 2 does not fool it
+
+Architecture detection deliberately asks the **hardware**, not the process. On
+Apple Silicon, an x86_64 `asdf` — or anything else running translated — spawns
+plugin scripts in an environment where `uname -m` answers `x86_64` even though
+the CPU can run `arm64`. Trusting `uname -m` there silently installs the Intel
+build.
+
+`host_arch()` resolves this via `sysctl -n hw.optional.arm64` (a hardware feature
+flag, unaffected by translation), falling back to actually executing
+`arch -arm64 /usr/bin/true`. So a Rosetta-translated asdf on an M-series Mac
+still installs the native `arm64` package.
+
 `zip` is always preferred: it is self-contained and needs no root. On Linux,
 `AppImage` is the only non-zip fallback, since an AppImage is a single
 self-extracting executable that can simply be placed and marked executable.
@@ -146,7 +159,25 @@ Three details worth knowing:
 
 ## Troubleshooting
 
-**`no downloadable build for linux/x86_64`** — upstream renamed or dropped the
+**Installed the x64 build on an Apple Silicon Mac** — you are running a
+Rosetta-translated asdf. Check with:
+
+```bash
+file "$(command -v asdf)"   # "Mach-O 64-bit executable x86_64" == translated
+```
+
+Update the plugin so it detects the hardware rather than the process, then
+reinstall:
+
+```bash
+asdf plugin update wave
+asdf uninstall wave <version> && asdf install wave <version>
+```
+
+The result should name an `arm64` asset. In the long run, reinstall asdf itself
+from an `arm64` build so it stops paying the translation cost for every plugin.
+
+**`no downloadable build for darwin/arm64`** — upstream renamed or dropped the
 asset. The error lists every published asset for that release; pick one that
 matches your CPU or pass `WAVE_FORMATS` to change the format preference.
 
