@@ -1,0 +1,29 @@
+Wave Terminal — a terminal emulator with graphical widgets.
+
+The plugin resolves the official prebuilt, per-platform/per-architecture archive
+from the GitHub releases API, verifies its sha256 against the digest published
+in the release metadata, and unpacks it into the asdf install directory.
+
+Supported hosts (see `lib/releases.py selftest` for the offline matrix):
+  macOS   arm64 / x64      -> Wave.app/Contents/MacOS/Wave
+  Linux   arm64 / x64      -> waveterm
+  Windows x64 (Git Bash)   -> Wave.exe, shimmed as bin/wave.cmd
+
+  asdf list wave              # available versions
+  asdf install wave latest    # install newest stable
+  asdf global wave latest     # pin it
+  asdf reshim wave            # expose the `wave` CLI
+
+Notes:
+  * Wave publishes the same Linux CPU under several spellings (x64/amd64/
+    x86_64, arm64/aarch64) and only some carry a .zip. The plugin resolves the
+    asset at runtime instead of hardcoding a table.
+
+  * GUI on macOS: asdf does not touch /Applications on its own. Run
+    lib/link-macos-app.sh to symlink /Applications/Wave.app at the active
+    version; it refuses to overwrite a real app bundle. On Linux and Windows
+    the installed binary is the app.
+
+  * Unlike `brew install --cask wave`, which installs one auto-updating copy,
+    this keeps every version side by side under
+    $ASDF_DATA_DIR/installs/wave/<version>, so you can switch between them.
